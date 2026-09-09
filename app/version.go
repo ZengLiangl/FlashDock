@@ -14,7 +14,7 @@ import (
 //	-ldflags "-X FlashDock/app.Version=1.3.0"
 //
 // 默认与 wails.json info.productVersion 保持一致。
-var Version = "1.1.40"
+var Version = "1.1.41"
 
 // GitHubToken 可选：构建时注入，用于提高公开 API 速率限制（仓库已公开，检查更新不再必需）。
 // 也可运行时设 FLASHDOCK_GITHUB_TOKEN，或本地 secrets/github_pat（不入 git）。
