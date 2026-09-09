@@ -442,30 +442,25 @@ func (a *App) startTransferWorker(cp *define.SftpTransferRecord) {
 				}
 			}
 		} else {
-			forceReplace := strings.EqualFold(cp.ConflictAction, "replace")
+			forceReplace := strings.EqualFold(cp.ConflictAction, "replace") || strings.EqualFold(cp.ConflictAction, "merge")
+			forceMirror := strings.EqualFold(cp.ConflictAction, "mirror")
 			if cp.IsDir {
-				if forceReplace {
-					if rmErr := aux.RemovePathReliable(cp.RemotePath); rmErr != nil {
-						transferErr = fmt.Errorf("清除远端目录失败: %w", rmErr)
-					}
+				// 目录上传：合并覆盖同名文件（.part 原子替换）；仅 mirror 策略才 prune 远端多余文件（如前端 dist）。
+				if cp.UseCompress {
+					a.setTransferPhase(cp.ID, "compressing")
+					// RemotePath 已是最终目标目录（含 duplicate 分配的唯一名）
+					transferErr = aux.UploadDirectoryZip(ctx, cp.LocalPath, cp.RemotePath, func(transferred, total int64, speedBPS float64) {
+						if transferred > 0 || total > 0 {
+							a.setTransferPhase(cp.ID, "uploading")
+						}
+						progress(transferred, total, speedBPS)
+					}, func(phase string) {
+						a.setTransferPhase(cp.ID, phase)
+					})
+				} else {
+					transferErr = aux.UploadDirectoryRecursive(ctx, cp.LocalPath, cp.RemotePath, progress)
 				}
-				if transferErr == nil {
-					if cp.UseCompress {
-						a.setTransferPhase(cp.ID, "compressing")
-						// RemotePath 已是最终目标目录（含 duplicate 分配的唯一名）
-						transferErr = aux.UploadDirectoryZip(ctx, cp.LocalPath, cp.RemotePath, func(transferred, total int64, speedBPS float64) {
-							if transferred > 0 || total > 0 {
-								a.setTransferPhase(cp.ID, "uploading")
-							}
-							progress(transferred, total, speedBPS)
-						}, func(phase string) {
-							a.setTransferPhase(cp.ID, phase)
-						})
-					} else {
-						transferErr = aux.UploadDirectoryRecursive(ctx, cp.LocalPath, cp.RemotePath, progress)
-					}
-				}
-				if transferErr == nil && forceReplace {
+				if transferErr == nil && forceMirror {
 					if pruneErr := aux.PruneRemoteDirToMirror(cp.LocalPath, cp.RemotePath); pruneErr != nil {
 						transferErr = fmt.Errorf("清理多余远端文件失败: %w", pruneErr)
 					} else if verifyErr := aux.VerifyRemoteDirMirror(cp.LocalPath, cp.RemotePath); verifyErr != nil {
@@ -641,7 +636,7 @@ func (a *App) StartShellDownload(machineName, remotePath string) (string, error)
 }
 
 // StartShellUpload 上传本地路径到远端目录（异步）。
-// conflictAction: replace | duplicate | merge | ""(默认 replace)；目录默认压缩上传（可在设置关闭）。
+// conflictAction: replace | duplicate | merge | mirror | ""(默认 replace)；目录默认压缩上传（可在设置关闭）。
 func (a *App) StartShellUpload(machineName, localPath, remoteDir, conflictAction string) (string, error) {
 	if err := a.requireUnlocked(); err != nil {
 		return "", err
@@ -653,7 +648,7 @@ func (a *App) StartShellUpload(machineName, localPath, remoteDir, conflictAction
 		conflictAction = "replace"
 	}
 	switch conflictAction {
-	case "replace", "duplicate", "merge":
+	case "replace", "duplicate", "merge", "mirror":
 	default:
 		return "", fmt.Errorf("不支持的冲突策略: %s", conflictAction)
 	}
@@ -682,8 +677,8 @@ func (a *App) StartShellUpload(machineName, localPath, remoteDir, conflictAction
 		remotePath = unique
 		name = path.Base(remotePath)
 	}
-	if conflictAction == "merge" && !info.IsDir() {
-		return "", fmt.Errorf("合并仅适用于目录")
+	if (conflictAction == "merge" || conflictAction == "mirror") && !info.IsDir() {
+		return "", fmt.Errorf("合并/镜像覆盖仅适用于目录")
 	}
 
 	useCompress := true

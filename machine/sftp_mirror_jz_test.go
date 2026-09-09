@@ -71,9 +71,7 @@ func TestJZDirectoryUploadReplaceMirror(t *testing.T) {
 
 	localV2 := t.TempDir()
 	buildV2(localV2)
-	if err := aux.RemovePathReliable(remoteDir); err != nil {
-		t.Fatalf("replace clear remote dir: %v", err)
-	}
+	// 模拟 SFTP「覆盖」：不先删远端目录，直接上传 v2 再 prune（避免运行中 jar 被清空）。
 	if err := aux.UploadDirectoryRecursive(ctx, localV2, remoteDir, nil); err != nil {
 		t.Fatalf("upload v2: %v", err)
 	}

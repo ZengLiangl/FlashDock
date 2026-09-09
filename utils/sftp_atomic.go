@@ -6,6 +6,25 @@ import (
 	"strings"
 )
 
+// RemoteUploadCommitter 完成原子上传替换所需的最小 SFTP 接口。
+type RemoteUploadCommitter interface {
+	PosixRename(oldname, newname string) error
+	Rename(oldname, newname string) error
+	Remove(path string) error
+}
+
+// CommitRemoteUpload 将 .part 暂存文件原子替换到目标路径（优先 posix-rename 覆盖，避免先删目标）。
+func CommitRemoteUpload(c RemoteUploadCommitter, partRemote, remotePath string) error {
+	if err := c.PosixRename(partRemote, remotePath); err == nil {
+		return nil
+	}
+	_ = c.Remove(remotePath)
+	if err := c.Rename(partRemote, remotePath); err != nil {
+		return fmt.Errorf("原子替换失败: %w", err)
+	}
+	return nil
+}
+
 const remoteUploadPartSuffix = ".flashdock.part"
 
 // RemoteUploadPartPath 返回远端原子上传的隐藏暂存路径（与目标同目录）。
@@ -20,6 +39,11 @@ func RemoteUploadPartPath(remotePath string) string {
 
 func shellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+// ShellCommitRemoteUpload 返回在远端 shell 上将 .part 原子替换为目标文件的命令（供 SCP 等无 SFTP rename 场景）。
+func ShellCommitRemoteUpload(partRemote, remotePath string) string {
+	return "mv -f " + shellSingleQuote(partRemote) + " " + shellSingleQuote(remotePath)
 }
 
 // RemoteAtomicUnzipCandidates 远端解压命令候选：先解到 staging，再 mv -f 覆盖目标文件，

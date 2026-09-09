@@ -305,10 +305,12 @@ func (a *ShellAuxManager) UploadFileSCP(ctx context.Context, localPath, remotePa
 	}
 	total := info.Size()
 	remoteDir := path.Dir(remotePath)
-	baseName := path.Base(remotePath)
+	partRemote := utils.RemoteUploadPartPath(remotePath)
+	baseName := path.Base(partRemote)
 	if remoteDir != "" && remoteDir != "." && remoteDir != "/" {
 		_ = a.mkdirSCP(remoteDir)
 	}
+	_ = a.removeSCP(partRemote)
 
 	session, err := client.NewSession()
 	if err != nil {
@@ -358,7 +360,12 @@ func (a *ShellAuxManager) UploadFileSCP(ctx context.Context, localPath, remotePa
 	}
 	_ = stdin.Close()
 	if err := session.Wait(); err != nil {
+		_ = a.removeSCP(partRemote)
 		return fmt.Errorf("SCP 上传结束失败: %w", err)
+	}
+	if out, err := a.Exec(utils.ShellCommitRemoteUpload(partRemote, remotePath)); err != nil {
+		_ = a.removeSCP(partRemote)
+		return fmt.Errorf("SCP 原子替换失败: %w (%s)", err, strings.TrimSpace(out))
 	}
 	if onProgress != nil {
 		onProgress(total, total, writer.speedBPS)

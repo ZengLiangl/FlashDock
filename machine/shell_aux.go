@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"FlashDock/define"
+	"FlashDock/utils"
 
 	"github.com/pkg/sftp"
 )
@@ -1072,19 +1073,28 @@ func (a *ShellAuxManager) OpenFile(remotePath string) (io.ReadCloser, error) {
 	return c.Open(remotePath)
 }
 
-// WriteFile 写入远端文件
+// WriteFile 写入远端文件（先写 .part 再原子替换，避免截断运行中文件）
 func (a *ShellAuxManager) WriteFile(remotePath string, data []byte) error {
 	c, err := a.sftpClient()
 	if err != nil {
 		return err
 	}
-	f, err := c.Create(remotePath)
+	partRemote := utils.RemoteUploadPartPath(remotePath)
+	_ = c.Remove(partRemote)
+	f, err := c.Create(partRemote)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.Write(data)
-	return err
+	if _, err = f.Write(data); err != nil {
+		_ = f.Close()
+		_ = c.Remove(partRemote)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = c.Remove(partRemote)
+		return err
+	}
+	return utils.CommitRemoteUpload(c, partRemote, remotePath)
 }
 
 func fileTypeLabel(mode os.FileMode) string {

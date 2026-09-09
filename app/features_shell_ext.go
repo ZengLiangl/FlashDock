@@ -490,7 +490,7 @@ func (a *App) runFolderSync(id, machineName, localDir, remoteDir, direction stri
 		parentLocal := filepath.Dir(job.localPath)
 		if job.action == "upload" {
 			_ = aux.MkdirRemotePath(parentRemote)
-			if upErr := aux.UploadFile(ctx, job.localPath, job.remotePath, nil); upErr != nil {
+			if upErr := aux.UploadFileOverwrite(ctx, job.localPath, job.remotePath, nil); upErr != nil {
 				rec.Status = "error"
 				rec.Error = upErr.Error()
 				rec.FinishedAt = time.Now().Unix()

@@ -18,6 +18,16 @@ func TestRemoteUploadPartPath(t *testing.T) {
 	}
 }
 
+func TestShellCommitRemoteUpload(t *testing.T) {
+	cmd := ShellCommitRemoteUpload("/tmp/.a.jar.flashdock.part", "/tmp/a.jar")
+	if !strings.Contains(cmd, "mv -f") {
+		t.Fatalf("want mv -f: %s", cmd)
+	}
+	if !strings.Contains(cmd, "/tmp/.a.jar.flashdock.part") || !strings.Contains(cmd, "/tmp/a.jar") {
+		t.Fatalf("paths missing: %s", cmd)
+	}
+}
+
 func TestRemoteAtomicUnzipCandidates(t *testing.T) {
 	cmds := RemoteAtomicUnzipCandidates("/tmp/a.zip", "/root/app/lib")
 	if len(cmds) < 4 {

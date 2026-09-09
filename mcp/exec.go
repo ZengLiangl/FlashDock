@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -295,16 +296,23 @@ func copyLocalToSFTP(cli *sftp.Client, local, remote string) error {
 	}
 	defer src.Close()
 	remote = strings.ReplaceAll(remote, "\\", "/")
-	if i := strings.LastIndex(remote, "/"); i > 0 {
-		_ = cli.MkdirAll(remote[:i])
+	remoteDir := path.Dir(remote)
+	if remoteDir != "" && remoteDir != "." && remoteDir != "/" {
+		_ = cli.MkdirAll(remoteDir)
 	}
-	dst, err := cli.Create(remote)
+	partRemote := utils.RemoteUploadPartPath(remote)
+	_ = cli.Remove(partRemote)
+	dst, err := cli.Create(partRemote)
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
-	_, err = utils.CopySFTPUpload(dst, src)
-	return err
+	if _, err = utils.CopySFTPUpload(dst, src); err != nil {
+		_ = dst.Close()
+		_ = cli.Remove(partRemote)
+		return err
+	}
+	_ = dst.Close()
+	return utils.CommitRemoteUpload(cli, partRemote, remote)
 }
 
 func readSFTPFile(cli *sftp.Client, path string, max int64) ([]byte, error) {

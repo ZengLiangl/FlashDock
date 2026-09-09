@@ -118,9 +118,8 @@ func uploadFile(rm *define.RemoteMachine, localPath, remotePath, targetFileName 
 		_ = rm.SFTPClient.Remove(partRemote)
 		return fail(fmt.Errorf("文件传输失败: %w", err))
 	}
-	_ = rm.SFTPClient.Remove(remotePath)
-	if err := rm.SFTPClient.Rename(partRemote, remotePath); err != nil {
-		return fail(fmt.Errorf("原子替换失败: %w", err))
+	if err := utils.CommitRemoteUpload(rm.SFTPClient, partRemote, remotePath); err != nil {
+		return fail(err)
 	}
 	reportTransfer(&define.SftpTransferRecord{
 		ID: transferID, Direction: "upload", Name: targetFileName,
@@ -176,8 +175,10 @@ func uploadDirectoryZip(rm *define.RemoteMachine, localPath, remotePath, targetF
 		if fallbackErr := uploadDirectoryRecursive(rm, localPath, remotePath, outputChan); fallbackErr != nil {
 			return fmt.Errorf("远程解压失败且递归上传失败: %v / %v", err, fallbackErr)
 		}
-		return nil
+	} else {
+		_ = runRemoteCommand(rm, "rm -f "+shellSingleQuote(tempRemotePath), nil)
 	}
+	// 任务模式目录 upload 为「合并覆盖同名文件」，不 prune 远端多余文件（瘦包场景常只传 target/jar 增量）。
 	return nil
 }
 

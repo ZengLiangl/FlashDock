@@ -397,9 +397,8 @@ func (a *ShellAuxManager) uploadFile(ctx context.Context, localPath, remotePath 
 		_ = dst.Close()
 		finalStaging := targetWrite
 		if finalStaging != remotePath {
-			_ = sftpClient.Remove(remotePath)
-			if err := sftpClient.Rename(finalStaging, remotePath); err != nil {
-				return fmt.Errorf("原子替换失败: %w", err)
+			if err := utils.CommitRemoteUpload(sftpClient, finalStaging, remotePath); err != nil {
+				return err
 			}
 		}
 		if onProgress != nil {
@@ -639,9 +638,8 @@ func (a *ShellAuxManager) uploadFileWithChunk(ctx context.Context, c *sftp.Clien
 		_ = c.Remove(partRemote)
 		return err
 	}
-	_ = c.Remove(remotePath)
-	if err := c.Rename(partRemote, remotePath); err != nil {
-		return fmt.Errorf("原子替换失败: %w", err)
+	if err := utils.CommitRemoteUpload(c, partRemote, remotePath); err != nil {
+		return err
 	}
 	return nil
 }

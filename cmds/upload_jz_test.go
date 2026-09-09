@@ -267,12 +267,19 @@ func TestJZTaskUploadDirectory(t *testing.T) {
 		t.Fatalf("dir upload: %v", err)
 	}
 
-	// 覆盖同名目录内容
+	// 增量合并：本地去掉 sub/ 后重传，远端旧 sub/b.txt 应保留（任务模式不 prune）
+	if err := os.RemoveAll(filepath.Join(localDir, "sub")); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(localDir, "a.txt"), []byte("dir-a2"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := doUpload(rm, []string{"upload", localDir, remoteDir}, out); err != nil {
 		t.Fatalf("dir re-upload: %v", err)
+	}
+
+	if _, err := rm.SFTPClient.Stat(path.Join(remoteDir, "sub", "b.txt")); err != nil {
+		t.Fatal("任务模式合并上传不应 prune 掉未出现在本地的 sub/b.txt")
 	}
 
 	f, err := rm.SFTPClient.Open(path.Join(remoteDir, "a.txt"))
